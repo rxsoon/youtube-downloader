@@ -6,6 +6,8 @@ import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
+os.environ["PATH"] += os.pathsep + r"C:\\ffmpeg\\bin"
+
 APP_TITLE = "YouTube Downloader — mp3 / mp4"
 
 
