@@ -2,7 +2,6 @@
 
 A simple Python GUI tool for downloading YouTube videos as **MP4 (video)** or **MP3 (audio)** using [yt-dlp](https://github.com/yt-dlp/yt-dlp).
 
-![screenshot](screenshot.png)
 
 ---
 
