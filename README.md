@@ -21,7 +21,7 @@ A simple Python GUI tool for downloading YouTube videos as **MP4 (video)** or **
 
 * Python 3.8+
 * [yt-dlp](https://github.com/yt-dlp/yt-dlp)
-* [ffmpeg](https://ffmpeg.org/) (must be installed and added to PATH)
+* [ffmpeg](https://ffmpeg.org/) (must be installed and added to PATH in the code)
 
 ### Setup
 
