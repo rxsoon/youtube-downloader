@@ -1,134 +1,134 @@
-import os
-import sys
-import shlex
-import subprocess
+import customtkinter as ctk
 import threading
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+import yt_dlp
+import os
+from tkinter import filedialog, messagebox
 
-os.environ["PATH"] += os.pathsep + r"C:\\ffmpeg\\bin"
+# ======= MANUAL FFMPEG PATH =======
+# Enter the path to ffmpeg/bin on your system
+FFMPEG_PATH = r"C:\\ffmpeg\\bin"
+os.environ["PATH"] += os.pathsep + FFMPEG_PATH
 
-APP_TITLE = "YouTube Downloader — mp3 / mp4"
+# ======= APPEARANCE SETTINGS =======
+ctk.set_appearance_mode("light")
+ctk.set_default_color_theme("green")
 
+# ======= FUNCTIONS =======
+def choose_output_folder():
+    folder = filedialog.askdirectory()
+    if folder:
+        output_path_var.set(folder)
 
-class YTDownloader(tk.Tk):
-    def __init__(self):
-        super().__init__()
-        self.title(APP_TITLE)
-        self.resizable(False, False)
-        self.setup_ui()
+def download_video():
+    url = url_entry.get()
+    folder = output_path_var.get()
+    file_format = format_var.get()
 
-    def setup_ui(self):
-        pad = 8
-        frm = ttk.Frame(self, padding=pad)
-        frm.grid(row=0, column=0, sticky="nsew")
+    if not url.strip():
+        messagebox.showwarning("Error", "Please enter a YouTube URL!")
+        return
 
-        # URL
-        ttk.Label(frm, text="YouTube URL:").grid(row=0, column=0, sticky="w")
-        self.url_var = tk.StringVar()
-        self.url_entry = ttk.Entry(frm, textvariable=self.url_var, width=60)
-        self.url_entry.grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, pad))
+    if not folder.strip():
+        messagebox.showwarning("Error", "Please choose an output folder!")
+        return
 
-        # Format
-        ttk.Label(frm, text="Format:").grid(row=2, column=0, sticky="w")
-        self.format_var = tk.StringVar(value="mp4")
-        r1 = ttk.Radiobutton(frm, text="MP4 (video)", variable=self.format_var, value="mp4")
-        r2 = ttk.Radiobutton(frm, text="MP3 (audio)", variable=self.format_var, value="mp3")
-        r1.grid(row=3, column=0, sticky="w")
-        r2.grid(row=3, column=1, sticky="w")
+    threading.Thread(target=run_download, args=(url, folder, file_format), daemon=True).start()
 
-        # Output folder
-        ttk.Label(frm, text="Output folder:").grid(row=4, column=0, sticky="w")
-        self.output_var = tk.StringVar(value=os.path.expanduser("~"))
-        self.output_entry = ttk.Entry(frm, textvariable=self.output_var, width=45)
-        self.output_entry.grid(row=5, column=0, sticky="w")
-        ttk.Button(frm, text="Browse", command=self.browse_output).grid(row=5, column=1, sticky="w")
+def run_download(url, folder, file_format):
+    progress_bar.set(0)
+    status_label.configure(text="⏳ Downloading...")
 
-        # Options
-        self.keep_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(frm, text="Keep video file when extracting audio", variable=self.keep_var).grid(row=6, column=0, columnspan=2, sticky="w")
+    ydl_opts = {
+        'outtmpl': os.path.join(folder, '%(title)s.%(ext)s'),
+        'progress_hooks': [progress_hook],
+        'noplaylist': True  # Download only a single video
+    }
 
-        # Download button
-        self.download_btn = ttk.Button(frm, text="Download", command=self.on_download)
-        self.download_btn.grid(row=7, column=0, pady=(pad, 0))
+    if file_format == "mp3":
+        ydl_opts.update({
+            'format': 'bestaudio/best',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }]
+        })
+    else:
+        ydl_opts.update({'format': 'bestvideo+bestaudio/best'})
 
-        # Progress / log
-        ttk.Label(frm, text="Log / progress:").grid(row=8, column=0, sticky="w", pady=(pad//2, 0))
-        self.log = tk.Text(frm, width=70, height=12, state="disabled")
-        self.log.grid(row=9, column=0, columnspan=3, pady=(0, pad))
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        status_label.configure(text="✅ Download completed successfully!")
+    except Exception as e:
+        status_label.configure(text="❌ Error")
+        messagebox.showerror("Error", str(e))
 
-    def browse_output(self):
-        d = filedialog.askdirectory(initialdir=self.output_var.get())
-        if d:
-            self.output_var.set(d)
-
-    def append_log(self, text):
-        self.log.configure(state="normal")
-        self.log.insert("end", text + "\n")
-        self.log.see("end")
-        self.log.configure(state="disabled")
-
-    def on_download(self):
-        url = self.url_var.get().strip()
-        if not url:
-            messagebox.showwarning("No URL", "Please paste a YouTube URL.")
-            return
-        outdir = self.output_var.get().strip()
-        if not outdir or not os.path.isdir(outdir):
-            messagebox.showwarning("Bad output folder", "Please choose a valid output folder.")
-            return
-
-        fmt = self.format_var.get()
-        keep_video = self.keep_var.get()
-
-        # Disable button while downloading
-        self.download_btn.configure(state="disabled")
-        t = threading.Thread(target=self.download_thread, args=(url, outdir, fmt, keep_video), daemon=True)
-        t.start()
-
-    def download_thread(self, url, outdir, fmt, keep_video):
+def progress_hook(d):
+    if d['status'] == 'downloading':
         try:
-            self.append_log(f"Starting download: {url}")
+            downloaded = d.get('downloaded_bytes', 0)
+            total = d.get('total_bytes', 1)
+            percent = downloaded / total
+            progress_bar.set(percent)
+        except:
+            pass
+    elif d['status'] == 'finished':
+        progress_bar.set(1)
 
-            # Build yt-dlp command
-            # output template: title.ext in chosen folder
-            outtmpl = os.path.join(outdir, "%(title)s.%(ext)s")
+# ======= MAIN WINDOW =======
+app = ctk.CTk()
+app.geometry("600x550")
+app.title("🎶 YouTube Downloader by RXSOON")
 
-            if fmt == "mp4": #mp4
-                cmd = [sys.executable, "-m", "yt_dlp", "-f", "bestvideo+bestaudio/best", "-o", outtmpl, url]
-            else:  # mp3
-                cmd = [sys.executable, "-m", "yt_dlp", "--extract-audio", "--audio-format", "mp3", "--audio-quality", "0", "-o", outtmpl, url]
+# ======= UI ELEMENTS =======
+title_label = ctk.CTkLabel(
+    app, text="🎧 YouTube Downloader 🎧",
+    font=("Century Gothic", 28, "bold"),
+    text_color="#4B4453"
+)
+title_label.pack(pady=20)
 
-            # Run process and capture output line by line
-            self.append_log("Running: " + " ".join(shlex.quote(x) for x in cmd))
+# URL entry
+url_entry = ctk.CTkEntry(
+    app, placeholder_text="Paste YouTube URL",
+    width=450, height=40, corner_radius=15
+)
+url_entry.pack(pady=10)
 
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, universal_newlines=True)
+# Format selection
+format_var = ctk.StringVar(value="mp3")
+format_frame = ctk.CTkFrame(app, corner_radius=15)
+format_frame.pack(pady=10)
+ctk.CTkRadioButton(format_frame, text="🎵 MP3", variable=format_var, value="mp3").pack(side="left", padx=20, pady=10)
+ctk.CTkRadioButton(format_frame, text="🎬 MP4", variable=format_var, value="mp4").pack(side="left", padx=20, pady=10)
 
-            # Read output
-            for line in proc.stdout:
-                line = line.rstrip("\n")
-                self.append_log(line)
+# Output folder selection
+output_path_var = ctk.StringVar(value=os.getcwd())
+folder_btn = ctk.CTkButton(
+    app, text="📂 Choose Folder",
+    command=choose_output_folder,
+    corner_radius=20, fg_color="#B5FFFC", text_color="black"
+)
+folder_btn.pack(pady=10)
 
-            proc.wait()
-            if proc.returncode == 0:
-                self.append_log("Download finished successfully.")
-                messagebox.showinfo("Done", "Download finished successfully.")
-            else:
-                self.append_log(f"yt-dlp exited with code {proc.returncode}")
-                messagebox.showerror("Error", f"yt-dlp exited with code {proc.returncode}. Check log for details.")
+# Download button
+download_btn = ctk.CTkButton(
+    app, text="⬇️ Download",
+    command=download_video,
+    width=200, height=50,
+    corner_radius=25, fg_color="#FFDEE9", text_color="black"
+)
+download_btn.pack(pady=20)
 
-        except FileNotFoundError as e:
-            self.append_log("ERROR: yt-dlp or python -m yt_dlp not found.")
-            self.append_log(str(e))
-            messagebox.showerror("Missing dependency", "yt-dlp (or python -m yt_dlp) not found. Install via: pip install yt-dlp\nAlso make sure ffmpeg is installed and on PATH.")
-        except Exception as e:
-            self.append_log("ERROR: " + str(e))
-            messagebox.showerror("Error", str(e))
-        finally:
-            # re-enable button
-            self.download_btn.configure(state="normal")
+# Progress bar
+progress_bar = ctk.CTkProgressBar(app, width=400)
+progress_bar.set(0)
+progress_bar.pack(pady=10)
 
+# Status label
+status_label = ctk.CTkLabel(app, text="", font=("Century Gothic", 14))
+status_label.pack(pady=5)
 
-if __name__ == "__main__":
-    app = YTDownloader()
-    app.mainloop()
+# Start the app
+app.mainloop()
