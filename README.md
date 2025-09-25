@@ -11,7 +11,7 @@ A simple Python GUI tool for downloading YouTube videos as **MP4 (video)** or **
 * Extract **MP3 (audio)** with high quality (requires ffmpeg)
 * Simple and clean Tkinter-based GUI
 * Choose output folder
-* Shows live log of the yt-dlp process
+* Shows live log of the yt-dlp process in the terminal
 
 ---
 
